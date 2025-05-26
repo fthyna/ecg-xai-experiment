@@ -9,7 +9,7 @@ from tqdm import tqdm
 import wfdb
 import ast
 from sklearn.metrics import fbeta_score, roc_auc_score, roc_curve, roc_curve, auc
-from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
+from sklearn.preprocessing import StandardScaler, LabelBinarizer, MultiLabelBinarizer
 
 
 #=====================DATA PROCESSING========================
@@ -49,7 +49,10 @@ def load_raw_data_ptbxl(df, sampling_rate, path):
 	if os.path.exists(bin_data_path):
 		data = np.load(bin_data_path, allow_pickle=True)
 	else:
-		data = [wfdb.rdsamp(path+f) for f in tqdm(df.filename_lr)]
+		if sampling_rate == 100:
+			data = [wfdb.rdsamp(path+f) for f in tqdm(df.filename_lr)]
+		else:
+			data = [wfdb.rdsamp(path+f) for f in tqdm(df.filename_hr)]
 		data = np.array([signal for signal, meta in data])
 		pickle.dump(data, open(bin_data_path, 'wb'), protocol=4)
 
@@ -76,7 +79,7 @@ def compute_label_aggregations(df, folder, ctype):
 	def aggregate_labels(y_dic, lookup_df, label_col=None):
 		'''
 		Extracts a unique list of labels from `lookup_df` based on input dict.
-		Dict keys are assumed to be in the df's `index_col`.
+		Dict keys are assumed to be in lookup_df's `index_col`.
 		If `label_col` is not given, uses `index_col` for the labels.
 		'''
 		tmp = []
@@ -110,6 +113,51 @@ def compute_label_aggregations(df, folder, ctype):
 
 	return df
 
+def create_mi_superclass_labels(df, scp_folder, versus_norm_only=True, high_confidence=False):
+	'''
+	Filters labels based on MI classification.
+	In SCP codes there are 3 levels of labels: type (diagnostic/form/rhythm), diagnostic superclass, and diagnostic subclass.
+	To do this we check the statement descriptor file to see whether SCP codes are associated with 'MI' diagnostic superclasses.
+	Then we convert the SCP code to the respective superclass and filter duplicates.
+
+	If versus_norm_only is set to True, it will filter the dataset to 'NORM' and 'MI' labels only.
+	Otherwise, it will include all labels distinguished only to 'MI' and 'NON_MI'.
+
+	If high_confidence is set to True it will include only the "likely" labels (SCP code value above 50.0)
+	'''
+	scp_df = pd.read_csv(scp_folder + 'scp_statements.csv', index_col=0)
+	scp_diag_df = scp_df[scp_df.diagnostic == 1.0]
+
+	classes = set()
+
+	# Filters target classes, and further filters based on confidence if needed
+	def get_NORM_MI_labels(labels:dict, scp_df):
+		result = set()
+		for code, conf in labels.items():
+			if code in scp_df.index:
+				superclass = scp_df.loc[code, 'diagnostic_class']
+
+				target_classes = ['MI', 'NORM'] if versus_norm_only else ['MI']
+				if superclass in target_classes:
+					if high_confidence and conf <= 50.0:
+						continue
+					result.add(superclass)
+					classes.add(superclass)
+		classes.add('OTHER')
+		return list(result) or ['OTHER']
+	
+	labels = df.scp_codes.apply(lambda x: get_NORM_MI_labels(x, scp_diag_df))
+	
+	if versus_norm_only:
+		mask = labels != ['OTHER']
+	else:
+		mask = labels != False # should be Series of 1s
+	
+	labels = labels.to_numpy()
+	mask = mask.to_numpy()
+	classes = list(classes)
+	return labels, classes, mask
+
 def select_data(X_raw, Y_raw, ctype, min_samples, outputfolder):
 	'''
 	Selects data from input by minimum samples filtering.
@@ -133,7 +181,9 @@ def select_data(X_raw, Y_raw, ctype, min_samples, outputfolder):
 	labels_col = ctype if ctype != 'all' else 'all_scp'
 
 	if ctype in ['subdiagnostic', 'superdiagnostic', 'form', 'rhythm', 'all']:
-		counts = pd.Series(np.concatenate(Y_raw[labels_col].values)).value_counts()
+		counts = np.concatenate(Y_raw[labels_col].values)
+		print(f"counts is {counts.shape}")
+		counts = pd.Series(counts).value_counts()
 		counts = counts[counts > min_samples]
 		Y_raw[labels_col] = Y_raw[labels_col].apply(lambda x: list(set(x).intersection(set(counts.index.values))))
 	Y_raw[labels_col+'_len'] = Y_raw[labels_col].apply(len)
@@ -150,6 +200,42 @@ def select_data(X_raw, Y_raw, ctype, min_samples, outputfolder):
 		pickle.dump(mlb, tokenizer)
 
 	return X, Y, y, mlb
+
+def binarize_multilabels(labels, outputfolder=None):
+	'''
+	Binarize a pd.Series or np.array.
+
+	Args:
+		df (pd.DataFrame): Dataframe to process.
+		labels_col (str): The name of the column to process.
+		outputfolder (str): Path to save the MultiLabelBinarizer if needed.
+
+	Returns:
+		tuple:
+			np.array: (N, C) matrix, the binary class labels.
+			list: Labels corresponding to each column.
+	'''
+
+	mlb = MultiLabelBinarizer()
+	mlb.fit(labels.values)
+	y = mlb.transform(labels.values)
+
+	if outputfolder is not None:
+		with open(outputfolder+'mlb.pkl', 'wb') as f:
+			pickle.dump(mlb, f)
+	
+	return y, mlb.classes_
+
+def binarize_labels(labels, outputfolder=None):
+	l = labels.apply(lambda x: x[0])
+	lb = LabelBinarizer()
+	y = lb.fit_transform(l.values)
+
+	if outputfolder is not None:
+		with open(outputfolder+'lb.pkl', 'wb') as f:
+			pickle.dump(lb, f)
+
+	return y, lb.classes_
 
 def preprocess_signals(X_train, X_validation, X_test, outputfolder):
 	# Standardize data such that mean 0 and variance 1

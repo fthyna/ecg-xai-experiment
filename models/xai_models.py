@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from models.inception1d import Inception1d
+from models.resnet1d import *
 
 def get_state_dict(experiment_name, model):
 	weights_path = f'../output/{experiment_name}/models/{model}/models/{model}.pth'
@@ -67,3 +68,11 @@ class Inception1dMod(nn.Module):
 	
 	def get_activations(self, x):
 		return self.backbone(x)
+	
+class ResNet1dMod(nn.Module):
+	def __init__(self, experiment_name):
+		super().__init__()
+		self.experiment_name = experiment_name
+		self.model_name = 'fastai_resnet1d'
+
+		

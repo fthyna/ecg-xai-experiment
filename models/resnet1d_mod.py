@@ -33,25 +33,29 @@ class BasicBlock1d(nn.Module):
 
 		if(isinstance(kernel_size,int)): kernel_size = [kernel_size,kernel_size//2+1]
 
+		print(f"parameters: inplanes={inplanes} | planes={planes} | stride={stride} | kernel_size={kernel_size} | drop_p={drop_p}")
+
 		self.conv1 = conv(inplanes, planes, stride=stride, kernel_size=kernel_size[0])
 		self.bn1 = nn.BatchNorm1d(planes)
-		self.relu = nn.ReLU(inplace=False)
-		self.drop1 = nn.Dropout(drop_p, inplace=False) if drop_p else None
+		self.relu = nn.ReLU(inplace=True)
 		self.conv2 = conv(planes, planes,kernel_size=kernel_size[1])
 		self.bn2 = nn.BatchNorm1d(planes)
-		self.drop2 = nn.Dropout(drop_p, inplace=False) if drop_p else None
 		self.downsample = downsample
 		self.stride = stride
+		self.dropout1 = nn.Dropout(drop_p, inplace=True) if drop_p is not None else None
+		self.dropout2 = nn.Dropout(drop_p, inplace=True) if drop_p is not None else None
 
 	def forward(self, x):
+		print(f"forwarding basic block | x.shape={x.shape}")
 		residual = x
 
 		out = self.conv1(x)
 		out = self.bn1(out)
 		out = self.relu(out)
 		# out.shape == (B, planes, N/stride)
-		if self.drop1:
-			out = self.drop1(out)
+
+		if self.dropout1 is not None:
+			out = self.dropout1(out)
 
 		out = self.conv2(out)
 		out = self.bn2(out)
@@ -64,8 +68,9 @@ class BasicBlock1d(nn.Module):
 
 		out += residual
 		out = self.relu(out)
-		if self.drop2:
-			out = self.drop1(out)
+
+		if self.dropout2 is not None:
+			out = self.dropout2(out)
 
 		return out
 

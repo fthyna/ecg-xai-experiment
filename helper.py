@@ -1,5 +1,6 @@
 import time
 import torch
+import os
 
 def benchmark(func, *args, runs=10, **kwargs):
 	"""
@@ -42,3 +43,8 @@ def print_memory_usage(model, input_tensor):
 	reserved = torch.cuda.memory_reserved()
 	print(f"Allocated: {allocated / 1024 ** 2:.2f} MB")
 	print(f"Reserved: {reserved / 1024 ** 2:.2f} MB")
+
+def check_create_folder(fldr):
+	'''fldr: new folder path'''
+	if not os.path.exists(fldr):
+		os.makedirs(fldr)

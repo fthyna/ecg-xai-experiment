@@ -4,6 +4,7 @@
 from scipy import signal as sg
 import numpy as np
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
 leads = ['I', 'II', 'III',
 		 'AVL', 'AVR', 'AVF',
@@ -528,7 +529,12 @@ def calculate_noise_energy(ecg_signal, fs=100, cutoff=45):
 	return noise_energy/signal_energy
 
 def plot_ecg_record(record, fs=100):
-	assert record.shape[1] == 12
+	if not isinstance(record, np.ndarray):
+		record = np.array(record)
+	if record.shape[0] == 12:
+		record = record.T
+
+	assert record.shape[1] == 12, "Record shape mismatch, 12 channels required at dimension 1"
 	time = np.arange(record.shape[0]) / fs
 	fig, axs = plt.subplots(6, 2, figsize=(12,15))
 	axs = axs.flatten()
@@ -563,3 +569,26 @@ def plot_ecg_heatmap(record, heatmap, fs=100):
 		ax.plot(record[:, i]-i*3, color='black', linewidth=1)
 
 	plt.show()
+
+def resize_tensor(tensor, target_shape, pad_value=0):
+	if len(target_shape) != tensor.ndim:
+		raise ValueError(f"target_shape:{target_shape} does not match tensor.ndim:{tensor.ndim}")
+	pad = []
+
+	# build padding format
+	for dim in reversed(range(tensor.ndim)):
+		current = tensor.size(dim)
+		target = target_shape[dim]
+		if current < target:
+			pad.extend([0, target-current])
+		else:
+			pad.extend([0,0])
+	# add padding
+	padded = F.pad(tensor, pad, value=pad_value)
+	# create tensor slice
+	slices = tuple(slice(0, target_shape[i]) for i in range(tensor.ndim))
+	# slice padded tensor
+	return padded[slices]
+
+def resize_ecg(ecg, target_length):
+	return resize_tensor(ecg, (12, target_length))
