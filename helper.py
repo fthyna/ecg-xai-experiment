@@ -46,5 +46,4 @@ def print_memory_usage(model, input_tensor):
 
 def check_create_folder(fldr):
 	'''fldr: new folder path'''
-	if not os.path.exists(fldr):
-		os.makedirs(fldr)
+	os.makedirs(fldr, exist_ok=True)

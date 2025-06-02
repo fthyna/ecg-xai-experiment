@@ -528,20 +528,35 @@ def calculate_noise_energy(ecg_signal, fs=100, cutoff=45):
 	signal_energy = np.sum(signal_component**2)
 	return noise_energy/signal_energy
 
-def plot_ecg_record(record, fs=100):
+def plot_ecg_record(record, fs, compare=None, normalized=False):
 	if not isinstance(record, np.ndarray):
 		record = np.array(record)
+	if (compare is not None) and (not isinstance(compare, np.ndarray)):
+		compare = np.array(compare)
 	if record.shape[0] == 12:
 		record = record.T
+	if (compare is not None) and (compare.shape[0] == 12):
+		compare = compare.T
+	assert record.shape[1] == 12, "record shape mismatch, 12 channels required at dimension 1"
+	assert compare is None or compare.shape[1] == 12, "compare shape mismatch, 12 channels required at dimension 1"
 
-	assert record.shape[1] == 12, "Record shape mismatch, 12 channels required at dimension 1"
 	time = np.arange(record.shape[0]) / fs
 	fig, axs = plt.subplots(6, 2, figsize=(12,15))
 	axs = axs.flatten()
+
+	if compare is None:
+		record_format = 'r'
+	else:
+		record_format = 'y'
+		compare_format = 'r'
+
+	ylim = [-1.33, 1.33] if not normalized else [-8, 8]
 	
 	for i in range(12):
-		axs[i].set_ylim([-1.33, 1.33])
-		axs[i].plot(time, record[:, i], linewidth=1)
+		axs[i].set_ylim(ylim)
+		axs[i].plot(time, record[:, i], record_format, linewidth=1)
+		if compare is not None:
+			axs[i].plot(time, compare[:, i], compare_format, linewidth=1)
 		axs[i].set_title('Lead ' + leads[i])
 		axs[i].grid(True)
 	axs[-2].set_xlabel('Time (s)')
@@ -572,7 +587,7 @@ def plot_ecg_heatmap(record, heatmap, fs=100):
 
 def resize_tensor(tensor, target_shape, pad_value=0):
 	if len(target_shape) != tensor.ndim:
-		raise ValueError(f"target_shape:{target_shape} does not match tensor.ndim:{tensor.ndim}")
+		raise ValueError(f"{target_shape=} does not match {tensor.ndim=}")
 	pad = []
 
 	# build padding format
@@ -590,5 +605,16 @@ def resize_tensor(tensor, target_shape, pad_value=0):
 	# slice padded tensor
 	return padded[slices]
 
-def resize_ecg(ecg, target_length):
+def resize_array(arr, target_shape, pad_value=0):
+	if len(target_shape) != arr.ndim:
+		raise ValueError(f"{target_shape=} does not match {arr.ndim=}")
+	pad_width = [(0, max(t - s, 0)) for s, t in zip(arr.shape, target_shape)]
+	padded = np.pad(arr, pad_width, mode='constant', constant_values=pad_value)
+	slices = tuple(slice(0, target_shape[i]) for i in range(arr.ndim))
+	return padded[slices]
+
+def resize_ecg_array(ecg, target_length):
+	return resize_array(ecg, (12, target_length))
+
+def resize_ecg_tensor(ecg, target_length):
 	return resize_tensor(ecg, (12, target_length))

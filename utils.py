@@ -69,12 +69,16 @@ def compute_label_aggregations(df, folder, ctype):
 		ctype (str): The classification task type, which determines the labels to be used.
 
 	Returns:
-		pd.DataFrame: The dataset with a new column containing the task-related labels.
+		tuple:
+		- pd.DataFrame: The dataset with a new column containing the task-related labels.
+		- list: The class labels.
 	"""
 
 	# Read SCP code descriptors from its own table
 	# 'diagnostic', 'form', and 'rhythm' are multi-hot columns containing either 1 or 0
 	aggregation_df = pd.read_csv(folder+'scp_statements.csv', index_col=0)
+	
+	classes = set()
 
 	def aggregate_labels(y_dic, lookup_df, label_col=None):
 		'''
@@ -91,6 +95,7 @@ def compute_label_aggregations(df, folder, ctype):
 					label = lookup_df.loc[key, label_col]
 					if pd.notna(label):
 						tmp.append(label)
+						classes.add(label)
 		return list(set(tmp))
 	
 	col = ctype if ctype != 'all' else 'all_scp'
@@ -111,7 +116,7 @@ def compute_label_aggregations(df, folder, ctype):
 	elif ctype == 'all':
 		df[col] = df.scp_codes.apply(lambda x: list(set(x.keys())))
 
-	return df
+	return df, list(classes)
 
 def create_mi_superclass_labels(df, scp_folder, versus_norm_only=True, high_confidence=False):
 	'''
@@ -124,6 +129,9 @@ def create_mi_superclass_labels(df, scp_folder, versus_norm_only=True, high_conf
 	Otherwise, it will include all labels distinguished only to 'MI' and 'NON_MI'.
 
 	If high_confidence is set to True it will include only the "likely" labels (SCP code value above 50.0)
+
+	Returns:
+		tuple (array of list, list, array of bool): Labels, classes and mask of used labels respectively.
 	'''
 	scp_df = pd.read_csv(scp_folder + 'scp_statements.csv', index_col=0)
 	scp_diag_df = scp_df[scp_df.diagnostic == 1.0]
